@@ -1,0 +1,10 @@
+# Python 缓存与虚拟环境
+__pycache__/
+*.pyc
+.venv/
+
+# 本地下载的数据
+/data/
+
+# 其他
+.DS_Store
