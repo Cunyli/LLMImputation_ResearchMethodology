@@ -8,3 +8,4 @@ __pycache__/
 
 # 其他
 .DS_Store
+.env
