@@ -110,13 +110,13 @@ def _imputer_factories(prefix: str) -> Dict[str, Callable[[], object]]:
             n_neighbors=5,
             weights="distance",
         ),
-        "iterative": lambda: IterativeTextImputer(
-            context_columns=DEFAULT_CONTEXT_COLUMNS,
-            max_iter=5,
-            svd_components=128,
-            max_features=2000,
-            random_state=42,
-        ),
+        # "iterative": lambda: IterativeTextImputer(
+        #     context_columns=DEFAULT_CONTEXT_COLUMNS,
+        #     max_iter=5,
+        #     svd_components=128,
+        #     max_features=2000,
+        #     random_state=42,
+        # ),
     }
 
 
@@ -136,7 +136,7 @@ def process_split(name: str, source_dir: Path, prefix: str) -> None:
             imputer_name,
             factory,
             primary_df,
-            verbose=imputer_name == "iterative",
+            verbose=False,
         )
         _save(primary_result.data, prefix, imputer_name, PRIMARY_RATE)
 

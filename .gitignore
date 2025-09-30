@@ -5,6 +5,7 @@ __pycache__/
 
 # 本地下载的数据
 /data/
+/outputs/
 
 # 其他
 .DS_Store
