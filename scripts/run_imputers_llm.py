@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from tqdm.auto import tqdm
 
 try:
-    from src.imputation import LLMImputerConfig, LLMTextImputer
+    from src.imputation.llm_imputer_augment import LLMImputerConfig, LLMTextImputer
 except ModuleNotFoundError as exc:  # pragma: no cover
     import importlib.util
     import sys

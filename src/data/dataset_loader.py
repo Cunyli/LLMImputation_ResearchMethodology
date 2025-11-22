@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-from datasets import Dataset, DatasetDict, load_dataset
+from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict, load_dataset
 
 
 _DATASET_NAME = "toxigen/toxigen-data"
 _DATASET_CONFIG = "annotated"
 
 
+DatasetLike = Union[Dataset, DatasetDict, IterableDataset, IterableDatasetDict]
+
+
 def load_toxigen_dataset(
     split: Optional[str] = None,
     **load_kwargs: Any,
-) -> Union[Dataset, DatasetDict]:
+) -> DatasetLike:
     """Load the toxigen dataset from Hugging Face.
 
     Args:

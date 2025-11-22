@@ -7,7 +7,7 @@ from .text_imputers import (
     TextImputerBase,
     KNNTextImputer,
 )
-from .llm_imputer import LLMTextImputer, LLMImputerConfig
+from .llm_imputer_augment import LLMTextImputer, LLMImputerConfig
 
 __all__ = [
     "SimpleTextImputer",
