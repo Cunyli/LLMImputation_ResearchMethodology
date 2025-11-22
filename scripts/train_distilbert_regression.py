@@ -12,18 +12,20 @@ python scripts/train_distilbert_regression.py \
 from __future__ import annotations
 
 import argparse
-import json
 import os
+import json
+import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 import numpy as np
 import pandas as pd
 import torch
-from datasets import Dataset, DatasetDict
+from datasets import Dataset as HFDataset, DatasetDict
 from scipy import stats
 from sklearn.metrics import f1_score, mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset as TorchDataset
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -32,6 +34,7 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,10 +91,10 @@ def load_datasets(
             random_state=seed,
             stratify=stratify,
         )
-        ds_train = Dataset.from_dict({text_column: X_train, label_column: y_train})
-        ds_val = Dataset.from_dict({text_column: X_val, label_column: y_val})
+        ds_train = HFDataset.from_dict({text_column: X_train, label_column: y_train})
+        ds_val = HFDataset.from_dict({text_column: X_val, label_column: y_val})
     else:
-        ds_train = Dataset.from_pandas(df_train[[text_column, label_column]])
+        ds_train = HFDataset.from_pandas(df_train[[text_column, label_column]])
         ds_val = None
 
     dataset_dict = DatasetDict({"train": ds_train})
@@ -103,7 +106,7 @@ def load_datasets(
         if not test_path.exists():
             raise FileNotFoundError(f"Test file not found: {test_path}")
         df_test = pd.read_parquet(test_path)
-        dataset_dict["test"] = Dataset.from_dict(
+        dataset_dict["test"] = HFDataset.from_dict(
             {
                 text_column: df_test[text_column].astype(str),
                 label_column: df_test[label_column].astype(np.float32),
@@ -115,7 +118,7 @@ def load_datasets(
 
 def tokenise_datasets(
     datasets: DatasetDict,
-    tokenizer: AutoTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     text_column: str,
     label_column: str,
     max_length: int,
@@ -134,16 +137,30 @@ def tokenise_datasets(
     return datasets.map(preprocess, batched=True, remove_columns=remove_cols)
 
 
+def _as_torch_dataset(dataset: HFDataset) -> TorchDataset[Any]:
+    return cast(TorchDataset[Any], dataset)
+
+
+def _maybe_as_torch_dataset(dataset: Optional[HFDataset]) -> Optional[TorchDataset[Any]]:
+    return _as_torch_dataset(dataset) if dataset is not None else None
+
+
+def _flatten_predictions(pred_array: Any) -> np.ndarray:
+    if isinstance(pred_array, tuple):
+        pred_array = pred_array[0]
+    return np.asarray(pred_array).reshape(-1)
+
+
 def compute_metrics_factory(thresholds: list[float]):
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
-        predictions = predictions.reshape(-1)
-        labels = labels.reshape(-1)
+        predictions = _flatten_predictions(predictions)
+        labels = np.asarray(labels).reshape(-1)
 
         mae = mean_absolute_error(labels, predictions)
         rmse = mean_squared_error(labels, predictions, squared=False)
-        pearson = stats.pearsonr(labels, predictions).statistic
-        spearman = stats.spearmanr(labels, predictions).statistic
+        pearson = stats.pearsonr(labels, predictions)[0]
+        spearman = stats.spearmanr(labels, predictions)[0]
 
         true_bins = np.digitize(labels, thresholds)
         pred_bins = np.digitize(predictions, thresholds)
@@ -160,11 +177,22 @@ def compute_metrics_factory(thresholds: list[float]):
     return compute_metrics
 
 
+def _json_default(obj: Any) -> Any:
+    if isinstance(obj, (np.floating, np.integer)):
+        return obj.item()
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
 def main() -> None:
     args = parse_args()
 
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     set_seed(args.seed)
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("No CUDA-capable GPU detected. Aborting training.")
 
     datasets = load_datasets(
         data_root=args.data_root,
@@ -185,6 +213,9 @@ def main() -> None:
         label_column=args.label_column,
         max_length=args.max_length,
     )
+    train_dataset = _as_torch_dataset(tokenized_datasets["train"])
+    valid_dataset = _maybe_as_torch_dataset(tokenized_datasets.get("validation"))
+    test_dataset = _maybe_as_torch_dataset(tokenized_datasets.get("test"))
 
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name,
@@ -212,13 +243,15 @@ def main() -> None:
         fp16=args.fp16,
         report_to=["none"],
         seed=args.seed,
+        save_total_limit=1,
+        overwrite_output_dir=True,
     )
 
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_datasets["train"],
-        eval_dataset=tokenized_datasets.get("validation"),
+        train_dataset=train_dataset,
+        eval_dataset=valid_dataset,
         tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics_factory(list(args.label_thresholds)),
@@ -227,16 +260,30 @@ def main() -> None:
     trainer.train()
     trainer.save_model(str(args.output_dir / "best_model"))
 
+    log_history = trainer.state.log_history
+    if log_history:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        with open(args.output_dir / "training_log.jsonl", "w", encoding="utf-8") as log_file:
+            for record in log_history:
+                log_file.write(json.dumps(record, default=_json_default) + "\n")
+
     metrics: dict[str, float] = {}
-    if "validation" in tokenized_datasets:
-        metrics.update(trainer.evaluate(tokenized_datasets["validation"]))
-    if "test" in tokenized_datasets:
-        metrics.update(trainer.evaluate(tokenized_datasets["test"], metric_key_prefix="test"))
+    if valid_dataset is not None:
+        metrics.update(trainer.evaluate(valid_dataset))
+    if test_dataset is not None:
+        metrics.update(trainer.evaluate(test_dataset, metric_key_prefix="test"))
 
     if metrics:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         with open(args.output_dir / "metrics.json", "w", encoding="utf-8") as f:
             json.dump(metrics, f, indent=2)
+
+    best_checkpoint = trainer.state.best_model_checkpoint
+    if best_checkpoint:
+        best_path = Path(best_checkpoint)
+        for checkpoint_dir in args.output_dir.glob("checkpoint-*"):
+            if checkpoint_dir.resolve() != best_path.resolve():
+                shutil.rmtree(checkpoint_dir, ignore_errors=True)
 
     print("Training complete. Metrics:")
     for key, value in metrics.items():

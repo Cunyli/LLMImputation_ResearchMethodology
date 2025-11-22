@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Dict, Iterator, Tuple, Union
 
 import pandas as pd
 from datasets import Dataset
@@ -56,5 +56,14 @@ def dataframe_missing_summary(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
 def missing_value_summary(dataset: Dataset) -> Dict[str, Dict[str, int]]:
     """统计每一列的缺失值数量与有效值数量。"""
 
-    df = dataset.to_pandas()
-    return dataframe_missing_summary(df)
+    df_or_iter: Union[pd.DataFrame, Iterator[pd.DataFrame]] = dataset.to_pandas()
+    if isinstance(df_or_iter, pd.DataFrame):
+        return dataframe_missing_summary(df_or_iter)
+
+    # `to_pandas` may yield chunks for large datasets; concatenate to a single frame.
+    chunks = list(df_or_iter)
+    if not chunks:
+        return dataframe_missing_summary(pd.DataFrame())
+
+    concatenated = pd.concat(chunks, ignore_index=True)
+    return dataframe_missing_summary(concatenated)

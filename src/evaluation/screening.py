@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Literal, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -57,9 +57,9 @@ class ScreeningConfig:
     tfidf_max_features: int = 30000
     tfidf_min_df: int | float = 3
     tfidf_ngram_range: tuple[int, int] = (1, 2)
-    logreg_penalty: str = "l2"
+    logreg_penalty: Literal["l1", "l2", "elasticnet"] | None = "l2"
     logreg_c: float = 1.0
-    logreg_solver: str = "saga"
+    logreg_solver: Literal["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"] = "saga"
     logreg_max_iter: int = 300
     positive_label_threshold: int = 3
 
@@ -126,6 +126,14 @@ def _prepare_xy(
     y = np.digitize(y_continuous, thresholds).astype(int)
     x_text = df[config.text_column].fillna("[MISSING]")
     return x_text, y
+
+
+def _to_numpy(array_like: Any) -> np.ndarray:
+    """将可能为 tuple 的预测结果安全转换为 ndarray。"""
+
+    if isinstance(array_like, tuple):
+        array_like = array_like[0]
+    return np.asarray(array_like)
 
 
 def demographic_parity_difference(
@@ -199,20 +207,22 @@ class ScreeningEvaluator:
 
         self.pipeline.fit(x_train, y_train)
 
-        y_pred = self.pipeline.predict(x_valid)
-        y_proba = self.pipeline.predict_proba(x_valid)
+        y_pred_raw = self.pipeline.predict(x_valid)
+        y_pred = _to_numpy(y_pred_raw)
+        y_proba_raw = self.pipeline.predict_proba(x_valid)
+        y_proba = _to_numpy(y_proba_raw)
 
-        macro_f1 = f1_score(y_valid, y_pred, average="macro")
-        roc_auc = roc_auc_score(y_valid, y_proba, multi_class="ovr")
+        macro_f1 = float(f1_score(y_valid, y_pred, average="macro"))
+        roc_auc = float(roc_auc_score(y_valid, y_proba, multi_class="ovr"))
 
-        groups_valid = df.loc[idx_valid, config.group_column]
+        groups_valid = pd.Series(df.loc[idx_valid, config.group_column])
         positive_mask = (y_pred >= config.positive_label_threshold).astype(int)
-        dp_diff = demographic_parity_difference(positive_mask, groups_valid)
+        dp_diff = demographic_parity_difference(positive_mask.tolist(), groups_valid)
 
         return {
             "macro_f1": macro_f1,
             "roc_auc": roc_auc,
-            "dp_diff": dp_diff,
+            "dp_diff": float(dp_diff),
         }
 
 
@@ -222,4 +232,3 @@ def save_results(results: List[dict], output_dir: Path) -> Path:
     path = output_dir / f"screening_results_{timestamp}.csv"
     pd.DataFrame(results).to_csv(path, index=False)
     return path
-

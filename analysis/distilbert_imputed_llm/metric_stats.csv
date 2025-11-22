@@ -1,0 +1,7 @@
+method,mechanism,ratio,mean,std,count
+mar,llm,05.parquet,0.8840774893760681,,1
+mar,llm,15.parquet,0.9770022034645081,,1
+mar,llm,30.parquet,1.076789379119873,,1
+mcar,llm,05.parquet,0.9088717103004456,,1
+mcar,llm,15.parquet,0.9709298014640808,,1
+mcar,llm,30.parquet,1.0483912229537964,,1

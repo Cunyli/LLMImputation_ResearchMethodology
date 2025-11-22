@@ -1,0 +1,7 @@
+dataset,output_dir,metric,test_metric,mechanism,method,ratio
+train_text_imputed_mar_llm_05.parquet,/u/33/lil14/unix/Documents/Project/LLMImputation_ResearchMethodology/outputs/distilbert_imputed_llm_runs/train_text_imputed_mar_llm_05,0.8840774893760681,1.0602339506149292,llm,mar,05.parquet
+train_text_imputed_mar_llm_15.parquet,/u/33/lil14/unix/Documents/Project/LLMImputation_ResearchMethodology/outputs/distilbert_imputed_llm_runs/train_text_imputed_mar_llm_15,0.9770022034645081,1.0805673599243164,llm,mar,15.parquet
+train_text_imputed_mar_llm_30.parquet,/u/33/lil14/unix/Documents/Project/LLMImputation_ResearchMethodology/outputs/distilbert_imputed_llm_runs/train_text_imputed_mar_llm_30,1.076789379119873,1.0948126316070557,llm,mar,30.parquet
+train_text_imputed_mcar_llm_05.parquet,/u/33/lil14/unix/Documents/Project/LLMImputation_ResearchMethodology/outputs/distilbert_imputed_llm_runs/train_text_imputed_mcar_llm_05,0.9088717103004456,1.0577501058578491,llm,mcar,05.parquet
+train_text_imputed_mcar_llm_15.parquet,/u/33/lil14/unix/Documents/Project/LLMImputation_ResearchMethodology/outputs/distilbert_imputed_llm_runs/train_text_imputed_mcar_llm_15,0.9709298014640808,1.0402683019638062,llm,mcar,15.parquet
+train_text_imputed_mcar_llm_30.parquet,/u/33/lil14/unix/Documents/Project/LLMImputation_ResearchMethodology/outputs/distilbert_imputed_llm_runs/train_text_imputed_mcar_llm_30,1.0483912229537964,1.0482816696166992,llm,mcar,30.parquet
